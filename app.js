@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.5';
+const APP_VERSION = '0.6';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -566,8 +566,9 @@ async function openCamera(group) {
       </div>
     </div>
     <div class="cam-stage">
-      <canvas class="cam-preview-canvas"></canvas>
       <video class="cam-video" autoplay playsinline muted></video>
+      <canvas class="cam-preview-canvas"></canvas>
+      <div class="cam-debug js-debug">起動中...</div>
       <div class="cam-flash"></div>
       <div class="cam-msg" hidden></div>
     </div>
@@ -591,39 +592,70 @@ async function openCamera(group) {
   const deviceSel = cam.querySelector('.js-device');
   const previewCanvas = cam.querySelector('.cam-preview-canvas');
   const previewCtx = previewCanvas.getContext('2d');
+  const debugEl = cam.querySelector('.js-debug');
   let stream = null;
   let lastThumbUrl = null;
   let rafId = null;
+  let debugTimer = null;
+  let frameCount = 0;
+  let usingVFC = false;
 
-  // iOS PWAは<video>がフレームを描画してくれないため、毎フレーム自分でキャンバスへ描画する
-  const drawPreview = () => {
-    if (!stream || !stream.active) { rafId = null; return; }
-    if (video.readyState >= 2 && video.videoWidth > 0) {
-      const cssW = previewCanvas.clientWidth;
-      const cssH = previewCanvas.clientHeight;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const bw = Math.max(1, Math.round(cssW * dpr));
-      const bh = Math.max(1, Math.round(cssH * dpr));
-      if (previewCanvas.width !== bw) previewCanvas.width = bw;
-      if (previewCanvas.height !== bh) previewCanvas.height = bh;
-      // object-fit: cover 相当の中央切り出し
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      const sAR = vw / vh;
-      const dAR = bw / bh;
-      let sx, sy, sw, sh;
-      if (sAR > dAR) {
-        sh = vh; sw = vh * dAR;
-        sx = (vw - sw) / 2; sy = 0;
-      } else {
-        sw = vw; sh = vw / dAR;
-        sx = 0; sy = (vh - sh) / 2;
-      }
-      previewCtx.drawImage(video, sx, sy, sw, sh, 0, 0, bw, bh);
+  // 1フレームをキャンバスへ描画
+  const drawOneFrame = () => {
+    if (!stream || !stream.active) return false;
+    if (video.readyState < 2 || video.videoWidth === 0) return false;
+    const cssW = previewCanvas.clientWidth;
+    const cssH = previewCanvas.clientHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const bw = Math.max(1, Math.round(cssW * dpr));
+    const bh = Math.max(1, Math.round(cssH * dpr));
+    if (previewCanvas.width !== bw) previewCanvas.width = bw;
+    if (previewCanvas.height !== bh) previewCanvas.height = bh;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const sAR = vw / vh;
+    const dAR = bw / bh;
+    let sx, sy, sw, sh;
+    if (sAR > dAR) {
+      sh = vh; sw = vh * dAR;
+      sx = (vw - sw) / 2; sy = 0;
+    } else {
+      sw = vw; sh = vw / dAR;
+      sx = 0; sy = (vh - sh) / 2;
     }
-    rafId = requestAnimationFrame(drawPreview);
+    previewCtx.drawImage(video, sx, sy, sw, sh, 0, 0, bw, bh);
+    frameCount++;
+    return true;
   };
-  const startPreview = () => { if (rafId == null) drawPreview(); };
+
+  // 描画ループ：requestVideoFrameCallback優先（iOSで信頼性◎）、無ければrAF
+  const startPreview = () => {
+    if (typeof video.requestVideoFrameCallback === 'function') {
+      usingVFC = true;
+      const onVFC = () => {
+        drawOneFrame();
+        if (stream && stream.active) video.requestVideoFrameCallback(onVFC);
+      };
+      video.requestVideoFrameCallback(onVFC);
+    } else {
+      usingVFC = false;
+      const loop = () => {
+        drawOneFrame();
+        if (stream && stream.active) rafId = requestAnimationFrame(loop);
+      };
+      rafId = requestAnimationFrame(loop);
+    }
+  };
+
+  // 画面に状態を表示（原因切り分け用）
+  const updateDebug = () => {
+    if (!stream) { debugEl.textContent = 'stream: none'; return; }
+    const t = stream.getVideoTracks()[0];
+    debugEl.textContent =
+      `video ready:${video.readyState} ${video.videoWidth}x${video.videoHeight} paused:${video.paused}\n` +
+      `stream active:${stream.active} track:${t ? t.readyState : '?'} muted:${t && t.muted ? 'yes' : 'no'} en:${t ? t.enabled : '?'}\n` +
+      `frames:${frameCount}  loop:${usingVFC ? 'VFC' : 'rAF'}`;
+  };
 
   const updatePreview = async () => {
     const seq = await Photos.nextSeq(group.id, curState, curDevice);
@@ -632,6 +664,7 @@ async function openCamera(group) {
 
   const close = () => {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    if (debugTimer) { clearInterval(debugTimer); debugTimer = null; }
     if (stream) stream.getTracks().forEach((t) => t.stop());
     if (lastThumbUrl) URL.revokeObjectURL(lastThumbUrl);
     cam.remove();
@@ -695,10 +728,14 @@ async function openCamera(group) {
     video.muted = true;
     video.setAttribute('playsinline', '');
     video.setAttribute('webkit-playsinline', '');
+    video.disablePictureInPicture = true;
+    if ('disableRemotePlayback' in video) video.disableRemotePlayback = true;
     const tryPlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
     video.onloadedmetadata = () => { tryPlay(); startPreview(); };
     tryPlay();
     startPreview();
+    debugTimer = setInterval(updateDebug, 500);
+    updateDebug();
   } catch (err) {
     msg.hidden = false;
     msg.innerHTML = `<div>カメラを起動できませんでした。<br>
