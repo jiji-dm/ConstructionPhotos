@@ -434,24 +434,6 @@ button { font-family: inherit; cursor: pointer; }
   pointer-events: none;
   z-index: 1;
 }
-/* デバッグ情報（原因切り分け用に画面下部へ） */
-.cam-debug {
-  position: absolute;
-  bottom: 6px;
-  left: 6px;
-  right: 6px;
-  background: rgba(0, 0, 0, 0.75);
-  color: #4dff4d;
-  font-family: ui-monospace, "SF Mono", monospace;
-  font-size: 10px;
-  padding: 5px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-  z-index: 10;
-  white-space: pre-wrap;
-  word-break: break-all;
-  line-height: 1.4;
-}
 .cam-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
 .cam-flash.on { opacity: 0.85; transition: opacity 0.15s; }
 .cam-msg {

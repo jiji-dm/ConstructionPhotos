@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.9';
+const APP_VERSION = '1.0';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -568,7 +568,6 @@ async function openCamera(group) {
     <div class="cam-stage">
       <video class="cam-video" autoplay playsinline muted></video>
       <canvas class="cam-preview-canvas"></canvas>
-      <div class="cam-debug js-debug">起動中...</div>
       <div class="cam-flash"></div>
       <div class="cam-msg" hidden></div>
     </div>
@@ -593,73 +592,37 @@ async function openCamera(group) {
   const previewCanvas = cam.querySelector('.cam-preview-canvas');
   // alpha:false で不透明モード。iOSでdrawImageが透明ピクセルを吐く問題への対策
   const previewCtx = previewCanvas.getContext('2d', { alpha: false });
-  const debugEl = cam.querySelector('.js-debug');
   let stream = null;
   let lastThumbUrl = null;
   let rafId = null;
-  let debugTimer = null;
-  let frameCount = 0;
-  let usingVFC = false;
-  let lastPixel = '?';
-  let lastError = '';
 
-  // 1フレームをキャンバスへ描画（スケールなし最小形：CSSのobject-fit:coverに任せる）
+  // 1フレームをキャンバスへ描画。サイズ合わせはCSSのobject-fit:coverに任せる（iOSはスケール付きdrawImageで詰まりやすい）
   const drawOneFrame = () => {
     if (!stream || !stream.active) return false;
     if (video.readyState < 2 || video.videoWidth === 0) return false;
-    // キャンバスの内部解像度を動画のサイズに合わせる
     if (previewCanvas.width !== video.videoWidth) {
       previewCanvas.width = video.videoWidth;
       previewCanvas.height = video.videoHeight;
     }
-    try {
-      previewCtx.drawImage(video, 0, 0);
-      frameCount++;
-      // 30フレームに1回、中央の1ピクセルを読み取って色を確認
-      if (frameCount % 30 === 0) {
-        try {
-          const cx = previewCanvas.width >> 1;
-          const cy = previewCanvas.height >> 1;
-          const d = previewCtx.getImageData(cx, cy, 1, 1).data;
-          lastPixel = `${d[0]},${d[1]},${d[2]},a${d[3]}`;
-        } catch (e) {
-          lastError = 'getImageData:' + (e.name || e.message || 'err');
-        }
-      }
-    } catch (e) {
-      lastError = 'drawImage:' + (e.name || e.message || 'err');
-    }
+    try { previewCtx.drawImage(video, 0, 0); } catch (e) { /* iOSで稀に発生 */ }
     return true;
   };
 
   // 描画ループ：requestVideoFrameCallback優先（iOSで信頼性◎）、無ければrAF
   const startPreview = () => {
     if (typeof video.requestVideoFrameCallback === 'function') {
-      usingVFC = true;
       const onVFC = () => {
         drawOneFrame();
         if (stream && stream.active) video.requestVideoFrameCallback(onVFC);
       };
       video.requestVideoFrameCallback(onVFC);
     } else {
-      usingVFC = false;
       const loop = () => {
         drawOneFrame();
         if (stream && stream.active) rafId = requestAnimationFrame(loop);
       };
       rafId = requestAnimationFrame(loop);
     }
-  };
-
-  // 画面に状態を表示（原因切り分け用）
-  const updateDebug = () => {
-    if (!stream) { debugEl.textContent = 'stream: none'; return; }
-    const t = stream.getVideoTracks()[0];
-    debugEl.textContent =
-      `video ready:${video.readyState} ${video.videoWidth}x${video.videoHeight} paused:${video.paused}\n` +
-      `stream active:${stream.active} track:${t ? t.readyState : '?'} muted:${t && t.muted ? 'yes' : 'no'} en:${t ? t.enabled : '?'}\n` +
-      `frames:${frameCount}  loop:${usingVFC ? 'VFC' : 'rAF'}  px:${lastPixel}` +
-      (lastError ? `\n${lastError}` : '');
   };
 
   const updatePreview = async () => {
@@ -669,7 +632,6 @@ async function openCamera(group) {
 
   const close = () => {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    if (debugTimer) { clearInterval(debugTimer); debugTimer = null; }
     if (stream) stream.getTracks().forEach((t) => t.stop());
     if (lastThumbUrl) URL.revokeObjectURL(lastThumbUrl);
     cam.remove();
@@ -739,8 +701,6 @@ async function openCamera(group) {
     video.onloadedmetadata = () => { tryPlay(); startPreview(); };
     tryPlay();
     startPreview();
-    debugTimer = setInterval(updateDebug, 500);
-    updateDebug();
   } catch (err) {
     msg.hidden = false;
     msg.innerHTML = `<div>カメラを起動できませんでした。<br>
