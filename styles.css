@@ -413,16 +413,17 @@ button { font-family: inherit; cursor: pointer; }
   text-align: center;
 }
 .cam-stage { flex: 1; position: relative; overflow: hidden; background: #111; }
-/* <video>を表示に戻す。もしiOSが描いてくれるならこれが見える */
+/* iOSは<video>を専用レイヤーで常に最上面に出してキャンバスを隠してしまうため、画面外に退避（ストリームのデコード自体はDOMにあれば継続する） */
 .cam-video {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #111;
+  top: -9999px;
+  left: -9999px;
+  width: 10px;
+  height: 10px;
+  opacity: 0;
+  pointer-events: none;
 }
-/* キャンバスは<video>の上に透明オーバーレイ。描画できればこっちが見える */
+/* キャンバスがプレビューの主役 */
 .cam-preview-canvas {
   position: absolute;
   inset: 0;
@@ -431,7 +432,7 @@ button { font-family: inherit; cursor: pointer; }
   object-fit: cover;
   display: block;
   pointer-events: none;
-  background: transparent;
+  z-index: 1;
 }
 /* デバッグ情報（原因切り分け用に画面下部へ） */
 .cam-debug {

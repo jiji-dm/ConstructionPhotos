@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.8';
+const APP_VERSION = '0.9';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
