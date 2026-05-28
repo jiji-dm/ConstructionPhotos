@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.4';
+const APP_VERSION = '0.5';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -437,13 +437,17 @@ async function renderGroup(groupId) {
               .join('')}</div>`
       }
     </main>
-    <button class="shutter-fab js-camera" aria-label="撮影">📷 撮影</button>
+    <div class="cam-buttons">
+      <button class="shutter-fab js-camera" aria-label="撮影">📷 アプリ内カメラで撮影</button>
+      <button class="alt-cam-btn js-native-camera">📱 標準カメラを使う（確実）</button>
+    </div>
   `;
 
   app.querySelectorAll('.thumb').forEach((fig) => {
     fig.onclick = () => openViewer(groupId, +fig.dataset.i);
   });
   app.querySelector('.js-camera').onclick = () => openCamera(group);
+  app.querySelector('.js-native-camera').onclick = () => openNativeCamera(group);
 }
 
 /* ========== 写真ビューア（スワイプ閲覧） ========== */
@@ -705,6 +709,88 @@ async function openCamera(group) {
   }
 
   await updatePreview();
+}
+
+/* ========== 標準カメラ（iPhone等の純正カメラを呼び出す確実版） ========== */
+
+async function openNativeCamera(group) {
+  const states = await States.list();
+  const devices = await Devices.list();
+  if (!states.length || !devices.length) {
+    toast('設定で状態と機器を1つ以上登録してください');
+    return;
+  }
+  let curState = states.find((s) => s.name === localStorage.getItem('lastState'))?.name || states[0].name;
+  let curDevice = devices.find((d) => d.name === localStorage.getItem('lastDevice'))?.name || devices[0].name;
+  let shotCount = 0;
+
+  const box = document.createElement('div');
+  box.className = 'modal';
+  box.innerHTML = `
+    <h3>📱 標準カメラで撮影</h3>
+    <p class="modal-msg">状態と機器を選んで「撮影」を押すと、端末の標準カメラが開きます。撮ったらアプリに戻り、続けて何枚でも撮れます。</p>
+    <div class="native-cam-row">
+      <span class="native-cam-label">状態</span>
+      <select class="native-cam-select js-nc-state">
+        ${states.map((s) => `<option ${s.name === curState ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="native-cam-row">
+      <span class="native-cam-label">機器</span>
+      <select class="native-cam-select js-nc-device">
+        ${devices.map((d) => `<option ${d.name === curDevice ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
+      </select>
+    </div>
+    <p class="native-cam-preview js-nc-preview"></p>
+    <p class="native-cam-status js-nc-status"></p>
+    <input type="file" accept="image/*" capture="environment" class="js-nc-file" hidden />
+    <div class="modal-actions">
+      <button class="btn btn-ghost js-nc-close">閉じる</button>
+      <button class="btn btn-primary js-nc-shoot">📷 撮影</button>
+    </div>`;
+
+  const m = backdrop(box);
+  const stateSel = box.querySelector('.js-nc-state');
+  const deviceSel = box.querySelector('.js-nc-device');
+  const previewEl = box.querySelector('.js-nc-preview');
+  const statusEl = box.querySelector('.js-nc-status');
+  const fileInput = box.querySelector('.js-nc-file');
+
+  const updatePreview = async () => {
+    const seq = await Photos.nextSeq(group.id, curState, curDevice);
+    previewEl.textContent = `次の保存名: ${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}_${seq}.jpg`;
+  };
+  await updatePreview();
+
+  stateSel.onchange = () => { curState = stateSel.value; localStorage.setItem('lastState', curState); updatePreview(); };
+  deviceSel.onchange = () => { curDevice = deviceSel.value; localStorage.setItem('lastDevice', curDevice); updatePreview(); };
+
+  box.querySelector('.js-nc-shoot').onclick = () => fileInput.click();
+
+  fileInput.onchange = async () => {
+    const file = fileInput.files && fileInput.files[0];
+    fileInput.value = ''; // 同じファイル名再選択でもchangeが発火するように
+    if (!file) return;
+    const seq = await Photos.nextSeq(group.id, curState, curDevice);
+    const filename = `${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}_${seq}.jpg`;
+    await Photos.add({
+      id: uid(),
+      groupId: group.id,
+      state: curState,
+      device: curDevice,
+      seq,
+      filename,
+      blob: file,
+      createdAt: Date.now(),
+    });
+    shotCount++;
+    statusEl.textContent = `✓ ${shotCount}枚撮影しました（${filename}）`;
+    await updatePreview();
+  };
+
+  const finish = () => { if (shotCount > 0) route(); };
+  box.querySelector('.js-nc-close').onclick = () => { m.close(); finish(); };
+  m.el.addEventListener('click', (e) => { if (e.target === m.el) finish(); });
 }
 
 /* ========== ZIP書き出し ========== */

@@ -153,7 +153,7 @@ button { font-family: inherit; cursor: pointer; }
 .bottom-actions .btn { width: 100%; }
 
 /* ===== ギャラリー ===== */
-.gallery-content { padding-bottom: calc(110px + var(--safe-bottom)); }
+.gallery-content { padding-bottom: calc(160px + var(--safe-bottom)); }
 .grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -183,22 +183,74 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1.4;
 }
 
-/* 撮影ボタン（場所画面） */
-.shutter-fab {
+/* 撮影ボタン群（場所画面） */
+.cam-buttons {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(18px + var(--safe-bottom));
+  left: 0;
+  right: 0;
+  bottom: calc(14px + var(--safe-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 5;
+}
+.shutter-fab {
   background: var(--primary);
   color: #fff;
   border: none;
   border-radius: 30px;
-  padding: 16px 36px;
-  font-size: 18px;
+  padding: 14px 28px;
+  font-size: 17px;
   font-weight: 700;
   box-shadow: 0 4px 14px rgba(31, 111, 235, 0.45);
 }
 .shutter-fab:active { background: var(--primary-d); }
+.alt-cam-btn {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--primary);
+  border: 1.5px solid var(--primary);
+  border-radius: 18px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.alt-cam-btn:active { background: #e3effa; }
+
+/* 標準カメラのモーダル内 */
+.native-cam-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.native-cam-label {
+  font-size: 14px;
+  color: var(--sub);
+  min-width: 40px;
+}
+.native-cam-select {
+  flex: 1;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fafbfc;
+}
+.native-cam-preview {
+  font-size: 12px;
+  color: var(--sub);
+  word-break: break-all;
+  margin: 14px 0 4px;
+}
+.native-cam-status {
+  font-size: 13px;
+  color: var(--primary);
+  margin: 4px 0 0;
+  min-height: 1.2em;
+  font-weight: 600;
+}
 
 /* ===== モーダル / バックドロップ ===== */
 .backdrop {
