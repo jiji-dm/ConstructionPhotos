@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.7';
+const APP_VERSION = '0.8';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -591,7 +591,8 @@ async function openCamera(group) {
   const stateSel = cam.querySelector('.js-state');
   const deviceSel = cam.querySelector('.js-device');
   const previewCanvas = cam.querySelector('.cam-preview-canvas');
-  const previewCtx = previewCanvas.getContext('2d');
+  // alpha:false で不透明モード。iOSでdrawImageが透明ピクセルを吐く問題への対策
+  const previewCtx = previewCanvas.getContext('2d', { alpha: false });
   const debugEl = cam.querySelector('.js-debug');
   let stream = null;
   let lastThumbUrl = null;
@@ -620,7 +621,7 @@ async function openCamera(group) {
           const cx = previewCanvas.width >> 1;
           const cy = previewCanvas.height >> 1;
           const d = previewCtx.getImageData(cx, cy, 1, 1).data;
-          lastPixel = `${d[0]},${d[1]},${d[2]}`;
+          lastPixel = `${d[0]},${d[1]},${d[2]},a${d[3]}`;
         } catch (e) {
           lastError = 'getImageData:' + (e.name || e.message || 'err');
         }
