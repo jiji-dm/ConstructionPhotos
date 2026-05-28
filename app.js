@@ -652,6 +652,12 @@ async function openCamera(group) {
       audio: false,
     });
     video.srcObject = stream;
+    // iOS Safari等は明示的にplay()しないとプレビューが真っ黒になる（撮影は可能でも表示されない）
+    video.muted = true;
+    video.setAttribute('playsinline', '');
+    const tryPlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
+    video.onloadedmetadata = tryPlay;
+    tryPlay();
   } catch (err) {
     msg.hidden = false;
     msg.innerHTML = `<div>カメラを起動できませんでした。<br>
