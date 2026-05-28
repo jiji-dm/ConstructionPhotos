@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.2';
+const APP_VERSION = '0.3';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -725,6 +725,11 @@ async function renderSettings() {
       ${section('機器', devices, 'device')}
       ${section('場所カテゴリ', cats, 'category')}
       <p class="settings-hint">※ ここで追加・変更した項目は撮影画面や場所追加の候補に反映されます。</p>
+      <section class="settings-section">
+        <h2>メンテナンス</h2>
+        <button class="btn btn-ghost js-force-update">アプリを強制更新</button>
+        <p class="settings-hint">うまく動かない・更新が反映されないときに押すと、キャッシュを消して最新版を読み直します。<br>※ 撮影済みの写真や現場データは消えません。</p>
+      </section>
       <p class="settings-version">version ${APP_VERSION}</p>
     </main>
   `;
@@ -762,6 +767,29 @@ async function renderSettings() {
       }
     };
   });
+
+  // 強制更新ボタン：SW登録解除＋キャッシュ全消去＋リロード
+  app.querySelector('.js-force-update').onclick = async () => {
+    const ok = await confirmDialog({
+      title: 'アプリを強制更新',
+      message: 'キャッシュを消して最新版を読み直します。写真と現場データは消えません。',
+      okLabel: '更新',
+    });
+    if (!ok) return;
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) await r.unregister();
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (e) {
+      console.warn('強制更新の途中で失敗', e);
+    }
+    location.reload();
+  };
 }
 
 /* ========== 共通：行タップでナビゲート ========== */

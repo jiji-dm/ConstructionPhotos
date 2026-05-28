@@ -1,7 +1,8 @@
-// Service Worker: アプリ本体をキャッシュしてオフラインでも起動できるようにする。
-// (写真データはIndexedDBに保存されるためキャッシュ対象外)
+// Service Worker: ネットワーク優先方式。
+// オンライン時は常に最新を取りに行き、失敗時のみキャッシュにフォールバック。
+// これで更新が確実に届く。(写真データはIndexedDBに保存されるためキャッシュ対象外)
 
-const CACHE = 'construction-photos-v3';
+const CACHE = 'construction-photos-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -28,17 +29,32 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// ネットワーク優先: 常に最新を取りに行き、成功したらキャッシュも更新。
+// オフラインや失敗時のみキャッシュを返す。
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  // ナビゲーションはキャッシュのindex.htmlにフォールバック
-  if (req.mode === 'navigate') {
-    e.respondWith(
-      fetch(req).catch(() => caches.match('./index.html'))
-    );
-    return;
-  }
+
   e.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req))
+    fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, clone)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() =>
+        caches.match(req).then((cached) => {
+          if (cached) return cached;
+          if (req.mode === 'navigate') return caches.match('./index.html');
+          return Response.error();
+        })
+      )
   );
+});
+
+// "SKIP_WAITING" メッセージで即新版に切替（手動強制更新用）
+self.addEventListener('message', (e) => {
+  if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
