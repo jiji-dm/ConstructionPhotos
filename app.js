@@ -471,18 +471,105 @@ async function addGroupDialog(siteId) {
 
 /* ========== ③ 場所：撮影＋ギャラリー ========== */
 
+// 並び替え・フィルタ状態（場所が切り替わったら自動リセット）
+const SORT_LABELS = {
+  date_asc: '撮影日時 古い順',
+  date_desc: '撮影日時 新しい順',
+  by_state: '状態でまとめる',
+  by_number: 'カメラ番号順',
+};
+const DEFAULT_SORT = 'date_asc';
+
+let _viewGroupId = null;
+let _sortMode = DEFAULT_SORT;
+const _filterState = new Set();
+const _filterDevice = new Set();
+const _filterNumber = new Set();
+
+function ensureGroupViewState(groupId) {
+  if (_viewGroupId !== groupId) {
+    _viewGroupId = groupId;
+    _sortMode = DEFAULT_SORT;
+    _filterState.clear();
+    _filterDevice.clear();
+    _filterNumber.clear();
+  }
+}
+
+function activeFilterCount() {
+  return _filterState.size + _filterDevice.size + _filterNumber.size;
+}
+
+function applySortFilter(photos, statesList) {
+  let result = photos;
+  if (_filterState.size) result = result.filter((p) => _filterState.has(p.state || ''));
+  if (_filterDevice.size) result = result.filter((p) => _filterDevice.has(p.device || ''));
+  if (_filterNumber.size) result = result.filter((p) => _filterNumber.has(p.number || ''));
+
+  const sorted = [...result];
+  if (_sortMode === 'date_desc') {
+    sorted.sort((a, b) => b.createdAt - a.createdAt);
+  } else if (_sortMode === 'by_state') {
+    const order = new Map((statesList || []).map((s, i) => [s.name, i]));
+    sorted.sort((a, b) => {
+      const sa = order.has(a.state) ? order.get(a.state) : 999;
+      const sb = order.has(b.state) ? order.get(b.state) : 999;
+      if (sa !== sb) return sa - sb;
+      return a.createdAt - b.createdAt;
+    });
+  } else if (_sortMode === 'by_number') {
+    sorted.sort((a, b) => {
+      const na = a.number ? parseInt(a.number, 10) : 9999;
+      const nb = b.number ? parseInt(b.number, 10) : 9999;
+      if (na !== nb) return na - nb;
+      return a.createdAt - b.createdAt;
+    });
+  } else {
+    sorted.sort((a, b) => a.createdAt - b.createdAt);
+  }
+  return sorted;
+}
+
+async function getViewPhotos(groupId) {
+  const [photos, statesList] = await Promise.all([
+    Photos.listByGroup(groupId),
+    States.list(),
+  ]);
+  return { all: photos, view: applySortFilter(photos, statesList), states: statesList };
+}
+
 async function renderGroup(groupId) {
   const group = await Groups.get(groupId);
   if (!group) return go('/');
-  const photos = await Photos.listByGroup(groupId);
+  ensureGroupViewState(groupId);
+  const { all, view } = await getViewPhotos(groupId);
+
+  const hasAny = all.length > 0;
+  const filterCount = activeFilterCount();
+  const sortChanged = _sortMode !== DEFAULT_SORT;
 
   app.innerHTML = `
     ${header({ title: group.name, back: `/site/${group.siteId}` })}
+    ${
+      hasAny
+        ? `<div class="gallery-controls">
+             <button class="ctrl-btn js-sort ${sortChanged ? 'is-active' : ''}">
+               <span class="ctrl-ico">↕</span><span>並び替え</span>
+             </button>
+             <button class="ctrl-btn js-filter ${filterCount ? 'is-active' : ''}">
+               <span class="ctrl-ico">▽</span><span>フィルタ</span>
+               ${filterCount ? `<span class="ctrl-badge">${filterCount}</span>` : ''}
+             </button>
+           </div>`
+        : ''
+    }
     <main class="content gallery-content">
       ${
-        photos.length === 0
+        !hasAny
           ? `<div class="empty">まだ写真がありません。<br>下の撮影ボタンから撮影してください。</div>`
-          : `<div class="grid">${photos
+          : view.length === 0
+          ? `<div class="empty">条件に一致する写真がありません。<br>フィルタを変えてみてください。</div>`
+          : `<div class="grid">${view
               .map(
                 (p, i) => `
             <figure class="thumb" data-i="${i}">
@@ -502,12 +589,125 @@ async function renderGroup(groupId) {
     fig.onclick = () => openViewer(groupId, +fig.dataset.i);
   });
   app.querySelector('.js-camera').onclick = () => openCamera(group);
+  const sortBtn = app.querySelector('.js-sort');
+  if (sortBtn) sortBtn.onclick = () => openSortSheet();
+  const filterBtn = app.querySelector('.js-filter');
+  if (filterBtn) filterBtn.onclick = () => openFilterSheet(all);
+}
+
+function openSortSheet() {
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.innerHTML = `
+    <div class="sheet-title">並び替え</div>
+    ${Object.entries(SORT_LABELS)
+      .map(
+        ([key, label]) => `
+        <button class="sheet-item ${_sortMode === key ? 'is-checked' : ''}" data-key="${key}">
+          <span class="sheet-check">${_sortMode === key ? '✓' : ''}</span>
+          <span>${escapeHtml(label)}</span>
+        </button>`
+      )
+      .join('')}
+  `;
+  const m = backdrop(sheet);
+  sheet.querySelectorAll('.sheet-item').forEach((btn) => {
+    btn.onclick = () => {
+      _sortMode = btn.dataset.key;
+      m.close();
+      route();
+    };
+  });
+}
+
+function openFilterSheet(allPhotos) {
+  // 実際に写真が持っている値だけを選択肢に出す
+  const states = [...new Set(allPhotos.map((p) => p.state || '').filter(Boolean))];
+  const devices = [...new Set(allPhotos.map((p) => p.device || '').filter(Boolean))];
+  const numbers = [...new Set(allPhotos.map((p) => p.number || ''))].sort((a, b) => {
+    if (a === '' && b !== '') return 1;
+    if (b === '' && a !== '') return -1;
+    return parseInt(a, 10) - parseInt(b, 10);
+  });
+
+  const renderChips = (items, selected, group, labelFor = (v) => v) =>
+    items
+      .map(
+        (v) => `
+        <button class="filter-chip ${selected.has(v) ? 'is-on' : ''}"
+                data-group="${group}" data-value="${escapeHtml(v)}">
+          ${escapeHtml(labelFor(v))}
+        </button>`
+      )
+      .join('');
+
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet filter-sheet';
+  sheet.innerHTML = `
+    <div class="sheet-title">フィルタ</div>
+    <div class="filter-body">
+      ${
+        states.length
+          ? `<div class="filter-section">
+               <div class="filter-label">状態</div>
+               <div class="filter-chips" data-section="state">${renderChips(states, _filterState, 'state')}</div>
+             </div>`
+          : ''
+      }
+      ${
+        devices.length
+          ? `<div class="filter-section">
+               <div class="filter-label">機器</div>
+               <div class="filter-chips" data-section="device">${renderChips(devices, _filterDevice, 'device')}</div>
+             </div>`
+          : ''
+      }
+      ${
+        numbers.length
+          ? `<div class="filter-section">
+               <div class="filter-label">カメラ番号</div>
+               <div class="filter-chips" data-section="number">${renderChips(numbers, _filterNumber, 'number', (v) => (v === '' ? '番号なし' : v))}</div>
+             </div>`
+          : ''
+      }
+    </div>
+    <div class="filter-actions">
+      <button class="btn btn-ghost js-reset">リセット</button>
+      <button class="btn btn-primary js-apply">適用</button>
+    </div>
+  `;
+  const m = backdrop(sheet);
+
+  const setFor = (g) =>
+    g === 'state' ? _filterState : g === 'device' ? _filterDevice : _filterNumber;
+
+  sheet.querySelectorAll('.filter-chip').forEach((chip) => {
+    chip.onclick = () => {
+      const s = setFor(chip.dataset.group);
+      const v = chip.dataset.value;
+      if (s.has(v)) s.delete(v);
+      else s.add(v);
+      chip.classList.toggle('is-on');
+    };
+  });
+
+  sheet.querySelector('.js-reset').onclick = () => {
+    _filterState.clear();
+    _filterDevice.clear();
+    _filterNumber.clear();
+    m.close();
+    route();
+  };
+  sheet.querySelector('.js-apply').onclick = () => {
+    m.close();
+    route();
+  };
 }
 
 /* ========== 写真ビューア（スワイプ閲覧） ========== */
 
 async function openViewer(groupId, startIndex) {
-  let photos = await Photos.listByGroup(groupId);
+  let photos = (await getViewPhotos(groupId)).view;
   if (!photos.length) return;
   let idx = Math.max(0, Math.min(startIndex, photos.length - 1));
 
@@ -566,7 +766,7 @@ async function openViewer(groupId, startIndex) {
     const ok = await confirmDialog({ title: 'この写真を削除', okLabel: '削除', danger: true });
     if (!ok) return;
     await Photos.remove(photos[idx].id);
-    photos = await Photos.listByGroup(groupId);
+    photos = (await getViewPhotos(groupId)).view;
     if (!photos.length) return close();
     idx = Math.min(idx, photos.length - 1);
     show();
