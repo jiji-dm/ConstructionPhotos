@@ -147,11 +147,12 @@ export const Photos = {
     getAllByIndex('photos', 'groupId', groupId).then((a) =>
       a.sort((x, y) => x.createdAt - y.createdAt)
     ),
-  // 連番は (groupId, state, device) ごとに 1 から
-  nextSeq: async (groupId, state, device) => {
+  // 連番は (groupId, state, device, number) ごとに 1 から
+  nextSeq: async (groupId, state, device, number) => {
     const photos = await Photos.listByGroup(groupId);
+    const num = number || '';
     const max = photos
-      .filter((p) => p.state === state && p.device === device)
+      .filter((p) => p.state === state && p.device === device && (p.number || '') === num)
       .reduce((m, p) => Math.max(m, p.seq || 0), 0);
     return max + 1;
   },

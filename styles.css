@@ -107,6 +107,21 @@ button { font-family: inherit; cursor: pointer; }
 .row-chevron { color: #c2c6cc; font-size: 22px; }
 .list-row .icon-btn { width: 40px; height: 40px; font-size: 22px; color: var(--sub); }
 
+.row-check-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: -4px 0;
+}
+.row-check {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
 /* ===== ボタン ===== */
 .btn {
   border: none;
@@ -135,6 +150,29 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 4px 12px rgba(31, 111, 235, 0.4);
 }
 .fab:active { background: var(--primary-d); }
+
+.btn-sm { padding: 10px 14px; font-size: 14px; border-radius: 10px; }
+
+/* ホーム画面の一括操作バー */
+.home-content { padding-bottom: calc(120px + var(--safe-bottom)); }
+.bulk-bar[hidden] { display: none; }
+.bulk-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px calc(10px + var(--safe-bottom));
+  background: rgba(242, 243, 245, 0.97);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--line);
+  z-index: 6;
+}
+.bulk-count { font-size: 14px; font-weight: 600; color: var(--text); }
+.bulk-actions { display: flex; gap: 8px; }
 
 /* 現場画面の下部アクション */
 .bottom-actions {
@@ -206,51 +244,6 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 4px 14px rgba(31, 111, 235, 0.45);
 }
 .shutter-fab:active { background: var(--primary-d); }
-.alt-cam-btn {
-  background: rgba(255, 255, 255, 0.95);
-  color: var(--primary);
-  border: 1.5px solid var(--primary);
-  border-radius: 18px;
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-}
-.alt-cam-btn:active { background: #e3effa; }
-
-/* 標準カメラのモーダル内 */
-.native-cam-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-.native-cam-label {
-  font-size: 14px;
-  color: var(--sub);
-  min-width: 40px;
-}
-.native-cam-select {
-  flex: 1;
-  font-size: 16px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fafbfc;
-}
-.native-cam-preview {
-  font-size: 12px;
-  color: var(--sub);
-  word-break: break-all;
-  margin: 14px 0 4px;
-}
-.native-cam-status {
-  font-size: 13px;
-  color: var(--primary);
-  margin: 4px 0 0;
-  min-height: 1.2em;
-  font-weight: 600;
-}
 
 /* ===== モーダル / バックドロップ ===== */
 .backdrop {
@@ -400,11 +393,12 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--safe-top) 8px 8px;
   background: rgba(0, 0, 0, 0.6);
 }
-.cam-selectors { flex: 1; display: flex; gap: 8px; }
+.cam-selectors { flex: 1; display: flex; gap: 6px; }
 .cam-select {
   flex: 1;
-  font-size: 15px;
-  padding: 10px 8px;
+  min-width: 0;
+  font-size: 14px;
+  padding: 10px 6px;
   border-radius: 10px;
   border: none;
   background: #2a2d31;
@@ -412,6 +406,7 @@ button { font-family: inherit; cursor: pointer; }
   appearance: none;
   text-align: center;
 }
+.cam-select-num { flex: 0 0 64px; }
 .cam-stage { flex: 1; position: relative; overflow: hidden; background: #111; }
 /* iOSは<video>を専用レイヤーで常に最上面に出してキャンバスを隠してしまうため、画面外に退避（ストリームのデコード自体はDOMにあれば継続する） */
 .cam-video {

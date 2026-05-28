@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '1.0';
+const APP_VERSION = '1.1';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -185,7 +185,7 @@ async function renderHome() {
       title: '工事写真',
       action: `<a class="icon-btn" href="#/settings" aria-label="設定">⚙</a>`,
     })}
-    <main class="content">
+    <main class="content home-content">
       ${
         sites.length === 0
           ? `<div class="empty">まだ現場がありません。<br>右下の＋から現場を追加してください。</div>`
@@ -193,6 +193,9 @@ async function renderHome() {
               .map(
                 (s) => `
             <li class="list-row" data-go="#/site/${s.id}">
+              <label class="row-check-wrap" data-noclick>
+                <input type="checkbox" class="row-check" data-id="${s.id}" />
+              </label>
               <span class="row-icon">🏗</span>
               <span class="row-main">
                 <span class="row-title">${escapeHtml(s.name)}</span>
@@ -205,10 +208,65 @@ async function renderHome() {
               .join('')}</ul>`
       }
     </main>
+    <div class="bulk-bar" hidden>
+      <span class="bulk-count js-bulk-count">選択中 0件</span>
+      <div class="bulk-actions">
+        <button class="btn btn-ghost btn-sm js-bulk-export">⬇ ZIP書き出し</button>
+        <button class="btn btn-danger btn-sm js-bulk-delete">🗑 削除</button>
+      </div>
+    </div>
     <button class="fab js-add">＋ 新しい現場</button>
   `;
 
   bindRowNav();
+
+  const bulkBar = app.querySelector('.bulk-bar');
+  const bulkCount = app.querySelector('.js-bulk-count');
+  const fab = app.querySelector('.fab');
+  const checks = app.querySelectorAll('.row-check');
+
+  const getSelectedIds = () =>
+    [...checks].filter((c) => c.checked).map((c) => c.dataset.id);
+
+  const updateBulkBar = () => {
+    const ids = getSelectedIds();
+    if (ids.length > 0) {
+      bulkCount.textContent = `選択中 ${ids.length}件`;
+      bulkBar.hidden = false;
+      fab.hidden = true;
+    } else {
+      bulkBar.hidden = true;
+      fab.hidden = false;
+    }
+  };
+
+  checks.forEach((c) => {
+    c.addEventListener('click', (e) => e.stopPropagation());
+    c.addEventListener('change', updateBulkBar);
+  });
+  // checkbox周りのlabelがタップで親rowへ伝播しないように
+  app.querySelectorAll('[data-noclick]').forEach((el) => {
+    el.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  app.querySelector('.js-bulk-export').onclick = async () => {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    await exportSites(ids);
+  };
+  app.querySelector('.js-bulk-delete').onclick = async () => {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    const ok = await confirmDialog({
+      title: `${ids.length}件の現場を削除`,
+      message: '中の場所と写真もすべて削除されます。',
+      okLabel: '削除',
+      danger: true,
+    });
+    if (!ok) return;
+    for (const id of ids) await Sites.remove(id);
+    route();
+  };
 
   app.querySelector('.js-add').onclick = async () => {
     const name = await promptDialog({ title: '新しい現場', placeholder: '例：〇〇ホテル', okLabel: '作成' });
@@ -294,7 +352,6 @@ async function renderSite(siteId) {
     </main>
     <div class="bottom-actions">
       <button class="btn btn-primary js-add-group">＋ 場所を追加</button>
-      <button class="btn btn-ghost js-export">⬇ この現場をZIP書き出し</button>
     </div>
   `;
 
@@ -332,7 +389,6 @@ async function renderSite(siteId) {
   };
 
   app.querySelector('.js-add-group').onclick = () => addGroupDialog(siteId);
-  app.querySelector('.js-export').onclick = () => exportSite(siteId);
 
   app.querySelectorAll('.js-more').forEach((btn) => {
     btn.onclick = (e) => {
@@ -439,7 +495,6 @@ async function renderGroup(groupId) {
     </main>
     <div class="cam-buttons">
       <button class="shutter-fab js-camera" aria-label="撮影">📷 アプリ内カメラで撮影</button>
-      <button class="alt-cam-btn js-native-camera">📱 標準カメラを使う（確実）</button>
     </div>
   `;
 
@@ -447,7 +502,6 @@ async function renderGroup(groupId) {
     fig.onclick = () => openViewer(groupId, +fig.dataset.i);
   });
   app.querySelector('.js-camera').onclick = () => openCamera(group);
-  app.querySelector('.js-native-camera').onclick = () => openNativeCamera(group);
 }
 
 /* ========== 写真ビューア（スワイプ閲覧） ========== */
@@ -549,7 +603,11 @@ async function openCamera(group) {
   const lastDevice = localStorage.getItem('lastDevice');
   let curState = states.find((s) => s.name === lastState)?.name || states[0].name;
   let curDevice = devices.find((d) => d.name === lastDevice)?.name || devices[0].name;
+  let curNumber = ''; // カメラ番号は毎回「－」スタート（誤入力防止）
   let shotCount = 0;
+
+  // 1〜99 + 「－」(空文字)
+  const numberOptions = ['', ...Array.from({ length: 99 }, (_, i) => String(i + 1))];
 
   const cam = document.createElement('div');
   cam.className = 'camera';
@@ -562,6 +620,9 @@ async function openCamera(group) {
         </select>
         <select class="cam-select js-device">
           ${devices.map((d) => `<option ${d.name === curDevice ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
+        </select>
+        <select class="cam-select cam-select-num js-number" aria-label="カメラ番号">
+          ${numberOptions.map((n) => `<option value="${n}" ${n === curNumber ? 'selected' : ''}>${n === '' ? '－' : n}</option>`).join('')}
         </select>
       </div>
     </div>
@@ -589,6 +650,7 @@ async function openCamera(group) {
   const lastThumb = cam.querySelector('.js-lastthumb');
   const stateSel = cam.querySelector('.js-state');
   const deviceSel = cam.querySelector('.js-device');
+  const numberSel = cam.querySelector('.js-number');
   const previewCanvas = cam.querySelector('.cam-preview-canvas');
   // alpha:false で不透明モード。iOSでdrawImageが透明ピクセルを吐く問題への対策
   const previewCtx = previewCanvas.getContext('2d', { alpha: false });
@@ -625,9 +687,14 @@ async function openCamera(group) {
     }
   };
 
+  const buildFilename = (seq) => {
+    const numPart = curNumber ? `(${curNumber})` : '';
+    return `${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}${numPart}_${seq}.jpg`;
+  };
+
   const updatePreview = async () => {
-    const seq = await Photos.nextSeq(group.id, curState, curDevice);
-    previewEl.textContent = `${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}_${seq}.jpg`;
+    const seq = await Photos.nextSeq(group.id, curState, curDevice, curNumber);
+    previewEl.textContent = buildFilename(seq);
   };
 
   const close = () => {
@@ -649,6 +716,10 @@ async function openCamera(group) {
     localStorage.setItem('lastDevice', curDevice);
     updatePreview();
   };
+  numberSel.onchange = () => {
+    curNumber = numberSel.value;
+    updatePreview();
+  };
 
   const capture = async () => {
     if (!video.videoWidth) return;
@@ -659,13 +730,14 @@ async function openCamera(group) {
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
     if (!blob) return;
 
-    const seq = await Photos.nextSeq(group.id, curState, curDevice);
-    const filename = `${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}_${seq}.jpg`;
+    const seq = await Photos.nextSeq(group.id, curState, curDevice, curNumber);
+    const filename = buildFilename(seq);
     await Photos.add({
       id: uid(),
       groupId: group.id,
       state: curState,
       device: curDevice,
+      number: curNumber,
       seq,
       filename,
       blob,
@@ -713,101 +785,24 @@ async function openCamera(group) {
   await updatePreview();
 }
 
-/* ========== 標準カメラ（iPhone等の純正カメラを呼び出す確実版） ========== */
-
-async function openNativeCamera(group) {
-  const states = await States.list();
-  const devices = await Devices.list();
-  if (!states.length || !devices.length) {
-    toast('設定で状態と機器を1つ以上登録してください');
-    return;
-  }
-  let curState = states.find((s) => s.name === localStorage.getItem('lastState'))?.name || states[0].name;
-  let curDevice = devices.find((d) => d.name === localStorage.getItem('lastDevice'))?.name || devices[0].name;
-  let shotCount = 0;
-
-  const box = document.createElement('div');
-  box.className = 'modal';
-  box.innerHTML = `
-    <h3>📱 標準カメラで撮影</h3>
-    <p class="modal-msg">状態と機器を選んで「撮影」を押すと、端末の標準カメラが開きます。撮ったらアプリに戻り、続けて何枚でも撮れます。</p>
-    <div class="native-cam-row">
-      <span class="native-cam-label">状態</span>
-      <select class="native-cam-select js-nc-state">
-        ${states.map((s) => `<option ${s.name === curState ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
-      </select>
-    </div>
-    <div class="native-cam-row">
-      <span class="native-cam-label">機器</span>
-      <select class="native-cam-select js-nc-device">
-        ${devices.map((d) => `<option ${d.name === curDevice ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
-      </select>
-    </div>
-    <p class="native-cam-preview js-nc-preview"></p>
-    <p class="native-cam-status js-nc-status"></p>
-    <input type="file" accept="image/*" capture="environment" class="js-nc-file" hidden />
-    <div class="modal-actions">
-      <button class="btn btn-ghost js-nc-close">閉じる</button>
-      <button class="btn btn-primary js-nc-shoot">📷 撮影</button>
-    </div>`;
-
-  const m = backdrop(box);
-  const stateSel = box.querySelector('.js-nc-state');
-  const deviceSel = box.querySelector('.js-nc-device');
-  const previewEl = box.querySelector('.js-nc-preview');
-  const statusEl = box.querySelector('.js-nc-status');
-  const fileInput = box.querySelector('.js-nc-file');
-
-  const updatePreview = async () => {
-    const seq = await Photos.nextSeq(group.id, curState, curDevice);
-    previewEl.textContent = `次の保存名: ${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}_${seq}.jpg`;
-  };
-  await updatePreview();
-
-  stateSel.onchange = () => { curState = stateSel.value; localStorage.setItem('lastState', curState); updatePreview(); };
-  deviceSel.onchange = () => { curDevice = deviceSel.value; localStorage.setItem('lastDevice', curDevice); updatePreview(); };
-
-  box.querySelector('.js-nc-shoot').onclick = () => fileInput.click();
-
-  fileInput.onchange = async () => {
-    const file = fileInput.files && fileInput.files[0];
-    fileInput.value = ''; // 同じファイル名再選択でもchangeが発火するように
-    if (!file) return;
-    const seq = await Photos.nextSeq(group.id, curState, curDevice);
-    const filename = `${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}_${seq}.jpg`;
-    await Photos.add({
-      id: uid(),
-      groupId: group.id,
-      state: curState,
-      device: curDevice,
-      seq,
-      filename,
-      blob: file,
-      createdAt: Date.now(),
-    });
-    shotCount++;
-    statusEl.textContent = `✓ ${shotCount}枚撮影しました（${filename}）`;
-    await updatePreview();
-  };
-
-  const finish = () => { if (shotCount > 0) route(); };
-  box.querySelector('.js-nc-close').onclick = () => { m.close(); finish(); };
-  m.el.addEventListener('click', (e) => { if (e.target === m.el) finish(); });
-}
-
 /* ========== ZIP書き出し ========== */
 
-async function exportSite(siteId) {
-  const site = await Sites.get(siteId);
-  const groups = await Groups.listBySite(siteId);
+async function exportSites(siteIds) {
   const files = [];
-  const siteFolder = sanitize(site.name);
-  for (const g of groups) {
-    const groupFolder = sanitize(g.name);
-    const photos = await Photos.listByGroup(g.id);
-    for (const p of photos) {
-      const buf = new Uint8Array(await p.blob.arrayBuffer());
-      files.push({ name: `${siteFolder}/${groupFolder}/${p.filename}`, data: buf });
+  const siteNames = [];
+  for (const siteId of siteIds) {
+    const site = await Sites.get(siteId);
+    if (!site) continue;
+    siteNames.push(site.name);
+    const siteFolder = sanitize(site.name);
+    const groups = await Groups.listBySite(siteId);
+    for (const g of groups) {
+      const groupFolder = sanitize(g.name);
+      const photos = await Photos.listByGroup(g.id);
+      for (const p of photos) {
+        const buf = new Uint8Array(await p.blob.arrayBuffer());
+        files.push({ name: `${siteFolder}/${groupFolder}/${p.filename}`, data: buf });
+      }
     }
   }
   if (files.length === 0) {
@@ -816,7 +811,15 @@ async function exportSite(siteId) {
   }
   toast(`${files.length}枚をZIPに書き出し中…`);
   const blob = createZip(files);
-  downloadBlob(blob, `${siteFolder}.zip`);
+  let zipName;
+  if (siteIds.length === 1) {
+    zipName = `${sanitize(siteNames[0])}.zip`;
+  } else {
+    const d = new Date();
+    const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    zipName = `現場まとめ_${stamp}.zip`;
+  }
+  downloadBlob(blob, zipName);
 }
 
 /* ========== 設定 ========== */
@@ -922,6 +925,7 @@ function bindRowNav() {
   app.querySelectorAll('[data-go]').forEach((row) => {
     row.addEventListener('click', (e) => {
       if (e.target.closest('.js-more')) return; // ⋯ボタンは除外
+      if (e.target.closest('[data-noclick]')) return; // チェックボックス等は除外
       go(row.dataset.go.slice(1));
     });
   });
