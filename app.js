@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.3';
+const APP_VERSION = '0.4';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -562,6 +562,7 @@ async function openCamera(group) {
       </div>
     </div>
     <div class="cam-stage">
+      <canvas class="cam-preview-canvas"></canvas>
       <video class="cam-video" autoplay playsinline muted></video>
       <div class="cam-flash"></div>
       <div class="cam-msg" hidden></div>
@@ -584,8 +585,41 @@ async function openCamera(group) {
   const lastThumb = cam.querySelector('.js-lastthumb');
   const stateSel = cam.querySelector('.js-state');
   const deviceSel = cam.querySelector('.js-device');
+  const previewCanvas = cam.querySelector('.cam-preview-canvas');
+  const previewCtx = previewCanvas.getContext('2d');
   let stream = null;
   let lastThumbUrl = null;
+  let rafId = null;
+
+  // iOS PWAは<video>がフレームを描画してくれないため、毎フレーム自分でキャンバスへ描画する
+  const drawPreview = () => {
+    if (!stream || !stream.active) { rafId = null; return; }
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      const cssW = previewCanvas.clientWidth;
+      const cssH = previewCanvas.clientHeight;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const bw = Math.max(1, Math.round(cssW * dpr));
+      const bh = Math.max(1, Math.round(cssH * dpr));
+      if (previewCanvas.width !== bw) previewCanvas.width = bw;
+      if (previewCanvas.height !== bh) previewCanvas.height = bh;
+      // object-fit: cover 相当の中央切り出し
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const sAR = vw / vh;
+      const dAR = bw / bh;
+      let sx, sy, sw, sh;
+      if (sAR > dAR) {
+        sh = vh; sw = vh * dAR;
+        sx = (vw - sw) / 2; sy = 0;
+      } else {
+        sw = vw; sh = vw / dAR;
+        sx = 0; sy = (vh - sh) / 2;
+      }
+      previewCtx.drawImage(video, sx, sy, sw, sh, 0, 0, bw, bh);
+    }
+    rafId = requestAnimationFrame(drawPreview);
+  };
+  const startPreview = () => { if (rafId == null) drawPreview(); };
 
   const updatePreview = async () => {
     const seq = await Photos.nextSeq(group.id, curState, curDevice);
@@ -593,6 +627,7 @@ async function openCamera(group) {
   };
 
   const close = () => {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     if (stream) stream.getTracks().forEach((t) => t.stop());
     if (lastThumbUrl) URL.revokeObjectURL(lastThumbUrl);
     cam.remove();
@@ -653,12 +688,13 @@ async function openCamera(group) {
       audio: false,
     });
     video.srcObject = stream;
-    // iOS Safari等は明示的にplay()しないとプレビューが真っ黒になる（撮影は可能でも表示されない）
     video.muted = true;
     video.setAttribute('playsinline', '');
+    video.setAttribute('webkit-playsinline', '');
     const tryPlay = () => { const p = video.play(); if (p && p.catch) p.catch(() => {}); };
-    video.onloadedmetadata = tryPlay;
+    video.onloadedmetadata = () => { tryPlay(); startPreview(); };
     tryPlay();
+    startPreview();
   } catch (err) {
     msg.hidden = false;
     msg.innerHTML = `<div>カメラを起動できませんでした。<br>
