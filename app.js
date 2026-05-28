@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '0.6';
+const APP_VERSION = '0.7';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -599,32 +599,35 @@ async function openCamera(group) {
   let debugTimer = null;
   let frameCount = 0;
   let usingVFC = false;
+  let lastPixel = '?';
+  let lastError = '';
 
-  // 1フレームをキャンバスへ描画
+  // 1フレームをキャンバスへ描画（スケールなし最小形：CSSのobject-fit:coverに任せる）
   const drawOneFrame = () => {
     if (!stream || !stream.active) return false;
     if (video.readyState < 2 || video.videoWidth === 0) return false;
-    const cssW = previewCanvas.clientWidth;
-    const cssH = previewCanvas.clientHeight;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const bw = Math.max(1, Math.round(cssW * dpr));
-    const bh = Math.max(1, Math.round(cssH * dpr));
-    if (previewCanvas.width !== bw) previewCanvas.width = bw;
-    if (previewCanvas.height !== bh) previewCanvas.height = bh;
-    const vw = video.videoWidth;
-    const vh = video.videoHeight;
-    const sAR = vw / vh;
-    const dAR = bw / bh;
-    let sx, sy, sw, sh;
-    if (sAR > dAR) {
-      sh = vh; sw = vh * dAR;
-      sx = (vw - sw) / 2; sy = 0;
-    } else {
-      sw = vw; sh = vw / dAR;
-      sx = 0; sy = (vh - sh) / 2;
+    // キャンバスの内部解像度を動画のサイズに合わせる
+    if (previewCanvas.width !== video.videoWidth) {
+      previewCanvas.width = video.videoWidth;
+      previewCanvas.height = video.videoHeight;
     }
-    previewCtx.drawImage(video, sx, sy, sw, sh, 0, 0, bw, bh);
-    frameCount++;
+    try {
+      previewCtx.drawImage(video, 0, 0);
+      frameCount++;
+      // 30フレームに1回、中央の1ピクセルを読み取って色を確認
+      if (frameCount % 30 === 0) {
+        try {
+          const cx = previewCanvas.width >> 1;
+          const cy = previewCanvas.height >> 1;
+          const d = previewCtx.getImageData(cx, cy, 1, 1).data;
+          lastPixel = `${d[0]},${d[1]},${d[2]}`;
+        } catch (e) {
+          lastError = 'getImageData:' + (e.name || e.message || 'err');
+        }
+      }
+    } catch (e) {
+      lastError = 'drawImage:' + (e.name || e.message || 'err');
+    }
     return true;
   };
 
@@ -654,7 +657,8 @@ async function openCamera(group) {
     debugEl.textContent =
       `video ready:${video.readyState} ${video.videoWidth}x${video.videoHeight} paused:${video.paused}\n` +
       `stream active:${stream.active} track:${t ? t.readyState : '?'} muted:${t && t.muted ? 'yes' : 'no'} en:${t ? t.enabled : '?'}\n` +
-      `frames:${frameCount}  loop:${usingVFC ? 'VFC' : 'rAF'}`;
+      `frames:${frameCount}  loop:${usingVFC ? 'VFC' : 'rAF'}  px:${lastPixel}` +
+      (lastError ? `\n${lastError}` : '');
   };
 
   const updatePreview = async () => {
