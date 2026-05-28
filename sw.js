@@ -1,7 +1,7 @@
 // Service Worker: アプリ本体をキャッシュしてオフラインでも起動できるようにする。
 // (写真データはIndexedDBに保存されるためキャッシュ対象外)
 
-const CACHE = 'construction-photos-v2';
+const CACHE = 'construction-photos-v3';
 const ASSETS = [
   './',
   './index.html',

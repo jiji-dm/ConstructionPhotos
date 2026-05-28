@@ -434,3 +434,4 @@ button { font-family: inherit; cursor: pointer; }
 .settings-name { flex: 1; font-size: 16px; }
 .settings-row .icon-btn { width: 40px; height: 40px; font-size: 18px; }
 .settings-hint { color: var(--sub); font-size: 13px; line-height: 1.7; padding: 0 4px; }
+.settings-version { text-align: center; color: var(--sub); font-size: 12px; padding: 16px 0 4px; }

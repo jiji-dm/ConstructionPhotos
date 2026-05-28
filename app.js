@@ -1,6 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
+const APP_VERSION = '0.2';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -724,6 +725,7 @@ async function renderSettings() {
       ${section('機器', devices, 'device')}
       ${section('場所カテゴリ', cats, 'category')}
       <p class="settings-hint">※ ここで追加・変更した項目は撮影画面や場所追加の候補に反映されます。</p>
+      <p class="settings-version">version ${APP_VERSION}</p>
     </main>
   `;
 
@@ -777,6 +779,14 @@ function bindRowNav() {
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('SW登録失敗', e));
+    navigator.serviceWorker
+      .register('./sw.js')
+      .then((reg) => {
+        // 画面が表に戻るたびに新版チェック（iOSのPWAでも更新を拾いやすくする）
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) reg.update();
+        });
+      })
+      .catch((e) => console.warn('SW登録失敗', e));
   });
 }
