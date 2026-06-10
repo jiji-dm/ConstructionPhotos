@@ -1,7 +1,7 @@
 import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -330,7 +330,7 @@ async function renderSite(siteId) {
       back: '/',
       action: `<button class="icon-btn js-site-more" aria-label="メニュー">⋯</button>`,
     })}
-    <main class="content">
+    <main class="content site-content">
       ${
         groups.length === 0
           ? `<div class="empty">まだ場所がありません。<br>下の「＋ 場所を追加」から作成してください。</div>`
@@ -338,6 +338,9 @@ async function renderSite(siteId) {
               .map(
                 (g) => `
             <li class="list-row" data-go="#/group/${g.id}">
+              <label class="row-check-wrap" data-noclick>
+                <input type="checkbox" class="row-check" data-id="${g.id}" />
+              </label>
               <span class="row-icon">📍</span>
               <span class="row-main">
                 <span class="row-title">${escapeHtml(g.name)}</span>
@@ -353,9 +356,60 @@ async function renderSite(siteId) {
     <div class="bottom-actions">
       <button class="btn btn-primary js-add-group">＋ 場所を追加</button>
     </div>
+    <div class="bulk-bar" hidden>
+      <span class="bulk-count js-bulk-count">選択中 0件</span>
+      <div class="bulk-actions">
+        <button class="btn btn-danger btn-sm js-bulk-delete">🗑 削除</button>
+      </div>
+    </div>
   `;
 
   bindRowNav();
+
+  const bulkBar = app.querySelector('.bulk-bar');
+  const bulkCount = app.querySelector('.js-bulk-count');
+  const bottomActions = app.querySelector('.bottom-actions');
+  const checks = app.querySelectorAll('.row-check');
+
+  const getSelectedIds = () =>
+    [...checks].filter((c) => c.checked).map((c) => c.dataset.id);
+
+  const updateBulkBar = () => {
+    const ids = getSelectedIds();
+    if (ids.length > 0) {
+      bulkCount.textContent = `選択中 ${ids.length}件`;
+      bulkBar.hidden = false;
+      bottomActions.hidden = true;
+    } else {
+      bulkBar.hidden = true;
+      bottomActions.hidden = false;
+    }
+  };
+
+  checks.forEach((c) => {
+    c.addEventListener('click', (e) => e.stopPropagation());
+    c.addEventListener('change', updateBulkBar);
+  });
+  app.querySelectorAll('[data-noclick]').forEach((el) => {
+    el.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  const bulkDelBtn = app.querySelector('.js-bulk-delete');
+  if (bulkDelBtn) {
+    bulkDelBtn.onclick = async () => {
+      const ids = getSelectedIds();
+      if (!ids.length) return;
+      const ok = await confirmDialog({
+        title: `${ids.length}件の場所を削除`,
+        message: '中の写真もすべて削除されます。',
+        okLabel: '削除',
+        danger: true,
+      });
+      if (!ok) return;
+      for (const id of ids) await Groups.remove(id);
+      route();
+    };
+  }
 
   app.querySelector('.js-site-more').onclick = () => {
     actionSheet([
@@ -572,7 +626,10 @@ async function renderGroup(groupId) {
           : `<div class="grid">${view
               .map(
                 (p, i) => `
-            <figure class="thumb" data-i="${i}">
+            <figure class="thumb" data-i="${i}" data-id="${p.id}">
+              <label class="thumb-check-wrap" data-noclick>
+                <input type="checkbox" class="thumb-check" data-id="${p.id}" />
+              </label>
               <img src="${makeUrl(p.blob)}" loading="lazy" alt="${escapeHtml(p.filename)}" />
               <figcaption>${escapeHtml(p.filename)}</figcaption>
             </figure>`
@@ -582,6 +639,13 @@ async function renderGroup(groupId) {
     </main>
     <div class="cam-buttons">
       <button class="shutter-fab js-camera" aria-label="撮影">📷 アプリ内カメラで撮影</button>
+    </div>
+    <div class="bulk-bar" hidden>
+      <span class="bulk-count js-bulk-count">選択中 0件</span>
+      <div class="bulk-actions">
+        <button class="btn btn-ghost btn-sm js-bulk-export">⬇ ZIP書き出し</button>
+        <button class="btn btn-danger btn-sm js-bulk-delete">🗑 削除</button>
+      </div>
     </div>
   `;
 
@@ -593,6 +657,63 @@ async function renderGroup(groupId) {
   if (sortBtn) sortBtn.onclick = () => openSortSheet();
   const filterBtn = app.querySelector('.js-filter');
   if (filterBtn) filterBtn.onclick = () => openFilterSheet(all);
+
+  const bulkBar = app.querySelector('.bulk-bar');
+  const bulkCount = app.querySelector('.js-bulk-count');
+  const camButtons = app.querySelector('.cam-buttons');
+  const checks = app.querySelectorAll('.thumb-check');
+
+  const getSelectedIds = () =>
+    [...checks].filter((c) => c.checked).map((c) => c.dataset.id);
+
+  const updateBulkBar = () => {
+    const ids = getSelectedIds();
+    if (ids.length > 0) {
+      bulkCount.textContent = `選択中 ${ids.length}件`;
+      bulkBar.hidden = false;
+      camButtons.hidden = true;
+    } else {
+      bulkBar.hidden = true;
+      camButtons.hidden = false;
+    }
+    // サムネに選択状態の見た目を反映
+    checks.forEach((c) => {
+      const fig = c.closest('.thumb');
+      if (fig) fig.classList.toggle('is-checked', c.checked);
+    });
+  };
+
+  checks.forEach((c) => {
+    c.addEventListener('click', (e) => e.stopPropagation());
+    c.addEventListener('change', updateBulkBar);
+  });
+  app.querySelectorAll('[data-noclick]').forEach((el) => {
+    el.addEventListener('click', (e) => e.stopPropagation());
+  });
+
+  const bulkExportBtn = app.querySelector('.js-bulk-export');
+  if (bulkExportBtn) {
+    bulkExportBtn.onclick = async () => {
+      const ids = getSelectedIds();
+      if (!ids.length) return;
+      await exportSelectedPhotos(ids, view, group.name);
+    };
+  }
+  const bulkDelBtn = app.querySelector('.js-bulk-delete');
+  if (bulkDelBtn) {
+    bulkDelBtn.onclick = async () => {
+      const ids = getSelectedIds();
+      if (!ids.length) return;
+      const ok = await confirmDialog({
+        title: `${ids.length}枚の写真を削除`,
+        okLabel: '削除',
+        danger: true,
+      });
+      if (!ok) return;
+      for (const id of ids) await Photos.remove(id);
+      route();
+    };
+  }
 }
 
 function openSortSheet() {
@@ -986,6 +1107,31 @@ async function openCamera(group) {
 }
 
 /* ========== ZIP書き出し ========== */
+
+async function exportSelectedPhotos(photoIds, photos, defaultName) {
+  const folderName = await promptDialog({
+    title: 'ZIP内のフォルダ名',
+    placeholder: '例：〇〇ホテル_喫煙所',
+    value: defaultName || '',
+    okLabel: '書き出す',
+  });
+  if (!folderName) return;
+  const folder = sanitize(folderName);
+  const idSet = new Set(photoIds);
+  const selected = photos.filter((p) => idSet.has(p.id));
+  if (!selected.length) {
+    toast('書き出す写真がありません');
+    return;
+  }
+  const files = [];
+  for (const p of selected) {
+    const buf = new Uint8Array(await p.blob.arrayBuffer());
+    files.push({ name: `${folder}/${p.filename}`, data: buf });
+  }
+  toast(`${files.length}枚をZIPに書き出し中…`);
+  const blob = createZip(files);
+  downloadBlob(blob, `${folder}.zip`);
+}
 
 async function exportSites(siteIds) {
   const files = [];

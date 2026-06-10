@@ -2,7 +2,7 @@
 // オンライン時は常に最新を取りに行き、失敗時のみキャッシュにフォールバック。
 // これで更新が確実に届く。(写真データはIndexedDBに保存されるためキャッシュ対象外)
 
-const CACHE = 'construction-photos-v12';
+const CACHE = 'construction-photos-v13';
 const ASSETS = [
   './',
   './index.html',

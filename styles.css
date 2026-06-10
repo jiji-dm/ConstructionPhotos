@@ -174,7 +174,11 @@ button { font-family: inherit; cursor: pointer; }
 .bulk-count { font-size: 14px; font-weight: 600; color: var(--text); }
 .bulk-actions { display: flex; gap: 8px; }
 
+/* 場所一覧（現場配下）の本文：選択バーが出る分の余白を確保 */
+.site-content { padding-bottom: calc(120px + var(--safe-bottom)); }
+
 /* 現場画面の下部アクション */
+.bottom-actions[hidden] { display: none; }
 .bottom-actions {
   position: fixed;
   left: 0;
@@ -243,11 +247,36 @@ button { font-family: inherit; cursor: pointer; }
 }
 @media (min-width: 540px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 .thumb {
+  position: relative;
   margin: 0;
   background: var(--card);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.thumb.is-checked {
+  outline: 3px solid var(--primary);
+  outline-offset: -3px;
+}
+.thumb-check-wrap {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+.thumb-check {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 .thumb img {
   width: 100%;
@@ -266,6 +295,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* 撮影ボタン群（場所画面） */
+.cam-buttons[hidden] { display: none; }
 .cam-buttons {
   position: fixed;
   left: 0;
