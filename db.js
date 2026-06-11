@@ -5,7 +5,7 @@ const DB_NAME = 'construction-photos';
 const DB_VERSION = 1;
 
 const DEFAULT_STATES = ['設置前', '設置後', '撤去前', '撤去後', '交換前', '交換後', '移設前', '移設後'];
-const DEFAULT_DEVICES = ['IPカメラ', 'ステレオカメラ', 'ウェブカメラ', 'サイネージ', 'LiDAR'];
+const DEFAULT_DEVICES = ['IPカメラ', 'ステカメ', 'BOX', 'コンセント', 'ウェブカメラ', 'サイネージ', 'LiDAR'];
 
 let dbPromise = null;
 
