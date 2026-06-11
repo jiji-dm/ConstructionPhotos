@@ -516,7 +516,20 @@ button { font-family: inherit; cursor: pointer; }
   padding: var(--safe-top) 8px 8px;
   background: rgba(0, 0, 0, 0.6);
 }
-.cam-selectors { flex: 1; display: flex; gap: 6px; }
+.cam-top-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.cam-mode-tabs { display: flex; gap: 6px; }
+.cam-mode-tab {
+  flex: 1;
+  font-size: 13px;
+  padding: 7px 4px;
+  border-radius: 8px;
+  border: none;
+  background: #2a2d31;
+  color: #9aa0a6;
+}
+.cam-mode-tab.is-active { background: var(--primary); color: #fff; }
+.cam-selectors { display: flex; gap: 6px; }
+.cam-select[hidden] { display: none; }
 .cam-select {
   flex: 1;
   min-width: 0;

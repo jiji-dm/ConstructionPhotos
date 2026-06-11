@@ -2,10 +2,11 @@
 // ストア: sites / groups / categories / photos / states / devices
 
 const DB_NAME = 'construction-photos';
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 
 const DEFAULT_STATES = ['設置前', '設置後', '撤去前', '撤去後', '交換前', '交換後', '移設前', '移設後'];
 const DEFAULT_DEVICES = ['IPカメラ', 'ステカメ', 'BOX', 'コンセント', 'ウェブカメラ', 'サイネージ', 'LiDAR'];
+const DEFAULT_PARTS = ['壁', '天井', '床', '点検口', '配線ルート'];
 
 let dbPromise = null;
 
@@ -37,6 +38,25 @@ function openDB() {
       if (!db.objectStoreNames.contains('devices')) {
         const s = db.createObjectStore('devices', { keyPath: 'id' });
         DEFAULT_DEVICES.forEach((name, i) => s.add({ id: uid(), name, order: i }));
+      }
+      // v3: 部位リスト（新規・既存DBともこの分岐で初期値を投入）
+      if (!db.objectStoreNames.contains('parts')) {
+        const s = db.createObjectStore('parts', { keyPath: 'id' });
+        DEFAULT_PARTS.forEach((name, i) => s.add({ id: uid(), name, order: i }));
+      }
+
+      // v2: 既存DBの機器リストを更新（ステレオカメラ→ステカメ、BOX・コンセント追加）
+      if (e.oldVersion >= 1 && e.oldVersion < 2) {
+        const s = req.transaction.objectStore('devices');
+        s.getAll().onsuccess = (ev) => {
+          const all = ev.target.result.sort((x, y) => (x.order || 0) - (y.order || 0));
+          all.forEach((d) => { if (d.name === 'ステレオカメラ') d.name = 'ステカメ'; });
+          const names = new Set(all.map((d) => d.name));
+          const toAdd = ['BOX', 'コンセント'].filter((n) => !names.has(n));
+          const at = all.findIndex((d) => d.name === 'ステカメ') + 1 || all.length;
+          all.splice(at, 0, ...toAdd.map((name) => ({ id: uid(), name })));
+          all.forEach((d, i) => { d.order = i; s.put(d); });
+        };
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -147,14 +167,21 @@ export const Photos = {
     getAllByIndex('photos', 'groupId', groupId).then((a) =>
       a.sort((x, y) => x.createdAt - y.createdAt)
     ),
-  // 連番は (groupId, state, device, number) ごとに 1 から
-  nextSeq: async (groupId, state, device, number) => {
+  // 連番は命名の識別キーごとに 1 から
+  //   機器モード: (groupId, state, device, number)
+  //   部位モード: (groupId, part, number)
+  nextSeq: async (groupId, key) => {
     const photos = await Photos.listByGroup(groupId);
-    const num = number || '';
-    const max = photos
-      .filter((p) => p.state === state && p.device === device && (p.number || '') === num)
-      .reduce((m, p) => Math.max(m, p.seq || 0), 0);
-    return max + 1;
+    const num = key.number || '';
+    const matches = photos.filter((p) => {
+      if ((p.number || '') !== num) return false;
+      if (key.mode === 'part') {
+        return p.mode === 'part' && (p.part || '') === (key.part || '');
+      }
+      // 既存写真は mode 未設定 → 機器モード扱い
+      return (p.mode || 'device') === 'device' && p.state === key.state && p.device === key.device;
+    });
+    return matches.reduce((m, p) => Math.max(m, p.seq || 0), 0) + 1;
   },
   add: (photo) => put('photos', photo),
   remove: (id) => del('photos', id),
@@ -196,4 +223,23 @@ export const Devices = {
     return put('devices', d);
   },
   remove: (id) => del('devices', id),
+};
+
+// ---- 部位リスト (parts) ----
+export const Parts = {
+  list: () => getAll('parts').then((a) => a.sort((x, y) => (x.order || 0) - (y.order || 0))),
+  add: async (name) => {
+    name = name.trim();
+    if (!name) return;
+    const all = await getAll('parts');
+    if (all.some((p) => p.name === name)) return;
+    return put('parts', { id: uid(), name, order: all.length });
+  },
+  rename: async (id, name) => {
+    const p = await getOne('parts', id);
+    if (!p) return;
+    p.name = name.trim();
+    return put('parts', p);
+  },
+  remove: (id) => del('parts', id),
 };

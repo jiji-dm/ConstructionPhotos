@@ -1,7 +1,7 @@
-import { Sites, Groups, Categories, Photos, States, Devices, uid } from './db.js';
+import { Sites, Groups, Categories, Photos, States, Devices, Parts, uid } from './db.js';
 import { createZip } from './zip.js';
 
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const app = document.getElementById('app');
 
 /* ========== ユーティリティ ========== */
@@ -915,6 +915,7 @@ async function openViewer(groupId, startIndex) {
 async function openCamera(group) {
   const states = await States.list();
   const devices = await Devices.list();
+  const parts = await Parts.list();
   if (!states.length || !devices.length) {
     toast('設定で状態と機器を1つ以上登録してください');
     return;
@@ -922,8 +923,11 @@ async function openCamera(group) {
 
   const lastState = localStorage.getItem('lastState');
   const lastDevice = localStorage.getItem('lastDevice');
+  const lastPart = localStorage.getItem('lastPart');
+  let curMode = localStorage.getItem('lastMode') === 'part' ? 'part' : 'device'; // 'device' | 'part'
   let curState = states.find((s) => s.name === lastState)?.name || states[0].name;
   let curDevice = devices.find((d) => d.name === lastDevice)?.name || devices[0].name;
+  let curPart = parts.find((p) => p.name === lastPart)?.name || ''; // '' = ー（部位なし）
   let curNumber = ''; // カメラ番号は毎回「－」スタート（誤入力防止）
   let shotCount = 0;
 
@@ -935,16 +939,26 @@ async function openCamera(group) {
   cam.innerHTML = `
     <div class="cam-top">
       <button class="icon-btn light js-close" aria-label="閉じる">✕</button>
-      <div class="cam-selectors">
-        <select class="cam-select js-state">
-          ${states.map((s) => `<option ${s.name === curState ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
-        </select>
-        <select class="cam-select js-device">
-          ${devices.map((d) => `<option ${d.name === curDevice ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
-        </select>
-        <select class="cam-select cam-select-num js-number" aria-label="カメラ番号">
-          ${numberOptions.map((n) => `<option value="${n}" ${n === curNumber ? 'selected' : ''}>${n === '' ? '－' : n}</option>`).join('')}
-        </select>
+      <div class="cam-top-main">
+        <div class="cam-mode-tabs">
+          <button class="cam-mode-tab js-mode ${curMode === 'device' ? 'is-active' : ''}" data-mode="device">機器</button>
+          <button class="cam-mode-tab js-mode ${curMode === 'part' ? 'is-active' : ''}" data-mode="part">部位</button>
+        </div>
+        <div class="cam-selectors">
+          <select class="cam-select js-state" ${curMode === 'part' ? 'hidden' : ''}>
+            ${states.map((s) => `<option ${s.name === curState ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+          </select>
+          <select class="cam-select js-device" ${curMode === 'part' ? 'hidden' : ''}>
+            ${devices.map((d) => `<option ${d.name === curDevice ? 'selected' : ''}>${escapeHtml(d.name)}</option>`).join('')}
+          </select>
+          <select class="cam-select js-part" ${curMode === 'part' ? '' : 'hidden'} aria-label="部位">
+            <option value="" ${curPart === '' ? 'selected' : ''}>ー</option>
+            ${parts.map((p) => `<option ${p.name === curPart ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}
+          </select>
+          <select class="cam-select cam-select-num js-number" aria-label="カメラ番号">
+            ${numberOptions.map((n) => `<option value="${n}" ${n === curNumber ? 'selected' : ''}>${n === '' ? '－' : n}</option>`).join('')}
+          </select>
+        </div>
       </div>
     </div>
     <div class="cam-stage">
@@ -971,7 +985,9 @@ async function openCamera(group) {
   const lastThumb = cam.querySelector('.js-lastthumb');
   const stateSel = cam.querySelector('.js-state');
   const deviceSel = cam.querySelector('.js-device');
+  const partSel = cam.querySelector('.js-part');
   const numberSel = cam.querySelector('.js-number');
+  const modeTabs = cam.querySelectorAll('.js-mode');
   const previewCanvas = cam.querySelector('.cam-preview-canvas');
   // alpha:false で不透明モード。iOSでdrawImageが透明ピクセルを吐く問題への対策
   const previewCtx = previewCanvas.getContext('2d', { alpha: false });
@@ -1009,14 +1025,41 @@ async function openCamera(group) {
   };
 
   const buildFilename = (seq) => {
-    const numPart = curNumber ? `(${curNumber})` : '';
-    return `${sanitize(curState)}_${sanitize(group.name)}_${sanitize(curDevice)}${numPart}_${seq}.jpg`;
+    const numPart = curNumber ? `${curNumber}` : '';
+    if (curMode === 'part') {
+      // エリア名_部位番号_id.jpg（部位「ー」なら エリア名_id.jpg）
+      if (!curPart) return `${sanitize(group.name)}_${seq}.jpg`;
+      return `${sanitize(group.name)}_${sanitize(curPart)}${numPart}_${seq}.jpg`;
+    }
+    // 機器名番号_作業名_エリア名_id.jpg
+    return `${sanitize(curDevice)}${numPart}_${sanitize(curState)}_${sanitize(group.name)}_${seq}.jpg`;
   };
 
+  const seqKey = () =>
+    curMode === 'part'
+      ? { mode: 'part', part: curPart, number: curNumber }
+      : { mode: 'device', state: curState, device: curDevice, number: curNumber };
+
   const updatePreview = async () => {
-    const seq = await Photos.nextSeq(group.id, curState, curDevice, curNumber);
+    const seq = await Photos.nextSeq(group.id, seqKey());
     previewEl.textContent = buildFilename(seq);
   };
+
+  const applyMode = () => {
+    const isPart = curMode === 'part';
+    stateSel.hidden = isPart;
+    deviceSel.hidden = isPart;
+    partSel.hidden = !isPart;
+    modeTabs.forEach((t) => t.classList.toggle('is-active', t.dataset.mode === curMode));
+    updatePreview();
+  };
+  modeTabs.forEach((t) => {
+    t.onclick = () => {
+      curMode = t.dataset.mode;
+      localStorage.setItem('lastMode', curMode);
+      applyMode();
+    };
+  });
 
   const close = () => {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
@@ -1037,6 +1080,11 @@ async function openCamera(group) {
     localStorage.setItem('lastDevice', curDevice);
     updatePreview();
   };
+  partSel.onchange = () => {
+    curPart = partSel.value;
+    localStorage.setItem('lastPart', curPart);
+    updatePreview();
+  };
   numberSel.onchange = () => {
     curNumber = numberSel.value;
     updatePreview();
@@ -1051,13 +1099,15 @@ async function openCamera(group) {
     const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.92));
     if (!blob) return;
 
-    const seq = await Photos.nextSeq(group.id, curState, curDevice, curNumber);
+    const seq = await Photos.nextSeq(group.id, seqKey());
     const filename = buildFilename(seq);
     await Photos.add({
       id: uid(),
       groupId: group.id,
-      state: curState,
-      device: curDevice,
+      mode: curMode,
+      state: curMode === 'device' ? curState : '',
+      device: curMode === 'device' ? curDevice : '',
+      part: curMode === 'part' ? curPart : '',
       number: curNumber,
       seq,
       filename,
@@ -1171,7 +1221,12 @@ async function exportSites(siteIds) {
 /* ========== 設定 ========== */
 
 async function renderSettings() {
-  const [states, devices, cats] = await Promise.all([States.list(), Devices.list(), Categories.list()]);
+  const [states, devices, parts, cats] = await Promise.all([
+    States.list(),
+    Devices.list(),
+    Parts.list(),
+    Categories.list(),
+  ]);
 
   const section = (titleLabel, items, kind) => `
     <section class="settings-section">
@@ -1196,6 +1251,7 @@ async function renderSettings() {
     <main class="content">
       ${section('状態', states, 'state')}
       ${section('機器', devices, 'device')}
+      ${section('部位', parts, 'part')}
       ${section('場所カテゴリ', cats, 'category')}
       <p class="settings-hint">※ ここで追加・変更した項目は撮影画面や場所追加の候補に反映されます。</p>
       <section class="settings-section">
@@ -1207,8 +1263,8 @@ async function renderSettings() {
     </main>
   `;
 
-  const api = { state: States, device: Devices, category: Categories };
-  const labelOf = { state: '状態', device: '機器', category: '場所カテゴリ' };
+  const api = { state: States, device: Devices, part: Parts, category: Categories };
+  const labelOf = { state: '状態', device: '機器', part: '部位', category: '場所カテゴリ' };
 
   app.querySelectorAll('.js-add-item').forEach((btn) => {
     btn.onclick = async () => {
