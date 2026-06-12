@@ -2,7 +2,7 @@
 // オンライン時は常に最新を取りに行き、失敗時のみキャッシュにフォールバック。
 // これで更新が確実に届く。(写真データはIndexedDBに保存されるためキャッシュ対象外)
 
-const CACHE = 'construction-photos-v16';
+const CACHE = 'construction-photos-v17';
 const ASSETS = [
   './',
   './index.html',
@@ -11,8 +11,13 @@ const ASSETS = [
   './db.js',
   './zip.js',
   './manifest.webmanifest',
+  './icons/icon.svg',
+  './icons/favicon-16.png',
+  './icons/favicon-32.png',
+  './icons/apple-touch-icon.png',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-512-maskable.png',
 ];
 
 self.addEventListener('install', (e) => {

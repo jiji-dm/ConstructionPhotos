@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- ベース: ブランド紫 #512376 (RGB 81,35,118) / カメラ＋VACAN（estimate と同スタイル） -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6a3a96"/>
+      <stop offset="1" stop-color="#461d68"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- 背面の V (VACAN) 透かし -->
+  <path d="M 70 56 L 256 412 L 442 56 L 366 56 L 256 268 L 146 56 Z" fill="#ffffff" opacity="0.12"/>
+  <!-- カメラ -->
+  <rect x="196" y="106" width="120" height="56" rx="14" fill="#ffffff"/>
+  <rect x="96" y="146" width="320" height="224" rx="28" fill="#ffffff"/>
+  <circle cx="376" cy="194" r="13" fill="#512376"/>
+  <!-- レンズ -->
+  <circle cx="256" cy="258" r="82" fill="#512376"/>
+  <circle cx="256" cy="258" r="56" fill="#ffffff"/>
+  <circle cx="256" cy="258" r="32" fill="#512376"/>
+  <!-- 社名 -->
+  <text x="262" y="454" text-anchor="middle" fill="#ffffff" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="62" font-weight="bold" letter-spacing="12">VACAN</text>
+</svg>
