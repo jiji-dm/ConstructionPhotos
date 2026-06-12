@@ -1,11 +1,12 @@
 :root {
-  --bg: #f2f3f5;
-  --card: #ffffff;
-  --text: #1c1f23;
-  --sub: #6b7280;
-  --line: #e3e5e8;
-  --primary: #1f6feb;
-  --primary-d: #1559c4;
+  /* SiteSurvey ブランド紫 #512376 ライトテーマ（背景に紫グレーを入れて白カードを際立たせる） */
+  --bg: #f1ecf7;        /* 紫がかった背景（白浮き防止） */
+  --card: #ffffff;      /* surface */
+  --text: #1a1424;      /* ink */
+  --sub: #5b5167;       /* ink-muted */
+  --line: #d9cce7;      /* はっきり見える紫ボーダー */
+  --primary: #512376;   /* brand-700（基調カラー） */
+  --primary-d: #3f1b5c; /* brand-800 */
   --danger: #e5484d;
   --topbar-h: 52px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -94,12 +95,12 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   gap: 10px;
   background: var(--card);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 14px 12px;
   margin-bottom: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(20, 14, 30, 0.04), 0 4px 16px rgba(81, 35, 118, 0.06);
 }
-.list-row:active { background: #f0f1f3; }
+.list-row:active { background: #f5f1f9; }
 .row-icon { font-size: 22px; }
 .row-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .row-title { font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,14 +126,14 @@ button { font-family: inherit; cursor: pointer; }
 /* ===== ボタン ===== */
 .btn {
   border: none;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 14px 18px;
   font-size: 16px;
   font-weight: 600;
 }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:active { background: var(--primary-d); }
-.btn-ghost { background: #e9ecf1; color: var(--text); }
+.btn-ghost { background: #ebe3f3; color: var(--primary); }
 .btn-danger { background: var(--danger); color: #fff; }
 
 /* 浮動の追加ボタン（ホーム） */
@@ -147,7 +148,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 16px 22px;
   font-size: 16px;
   font-weight: 700;
-  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.4);
+  box-shadow: 0 8px 22px rgba(81, 35, 118, 0.35);
 }
 .fab:active { background: var(--primary-d); }
 
@@ -166,7 +167,7 @@ button { font-family: inherit; cursor: pointer; }
   justify-content: space-between;
   gap: 8px;
   padding: 10px 14px calc(10px + var(--safe-bottom));
-  background: rgba(242, 243, 245, 0.97);
+  background: rgba(241, 236, 247, 0.97);
   backdrop-filter: blur(6px);
   border-top: 1px solid var(--line);
   z-index: 6;
@@ -188,7 +189,7 @@ button { font-family: inherit; cursor: pointer; }
   flex-direction: column;
   gap: 8px;
   padding: 10px 12px calc(10px + var(--safe-bottom));
-  background: rgba(242, 243, 245, 0.95);
+  background: rgba(241, 236, 247, 0.95);
   backdrop-filter: blur(6px);
   border-top: 1px solid var(--line);
 }
@@ -217,11 +218,11 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 15px;
   font-weight: 600;
 }
-.ctrl-btn:active { background: #eef1f6; }
+.ctrl-btn:active { background: #f5f1f9; }
 .ctrl-btn.is-active {
   border-color: var(--primary);
   color: var(--primary);
-  background: #eef4ff;
+  background: #f5f1f9;
 }
 .ctrl-ico { font-size: 16px; }
 .ctrl-badge {
@@ -315,7 +316,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 14px 28px;
   font-size: 17px;
   font-weight: 700;
-  box-shadow: 0 4px 14px rgba(31, 111, 235, 0.45);
+  box-shadow: 0 8px 22px rgba(81, 35, 118, 0.4);
 }
 .shutter-fab:active { background: var(--primary-d); }
 
